@@ -139,14 +139,8 @@ def admin_reply_keyboard(user_id: int):
     return builder.as_markup()
 
 
-def share_keyboard(user_id: int):
-    if BOT_USERNAME:
-        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
-    else:
-        ref_link = "https://t.me"
-
+def share_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔥 Поделиться ботом", url=ref_link)
     builder.button(text="📊 Мои приглашения", callback_data="menu:myrefs")
     builder.adjust(1)
     return builder.as_markup()
@@ -218,12 +212,14 @@ async def my_refs(message: Message) -> None:
     await message.answer(
         "📊 <b>Твоя реферальная программа</b>\n\n"
         f"<b>Приглашено:</b> {total}\n\n"
-        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
-        "Отправь её друзьям 👇"
+        "📎 <b>Твоя ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        "Скопируй её и отправь друзьям 👇"
     )
+
     await message.answer(
-        "🔥 Поделиться ботом:",
-        reply_markup=share_keyboard(message.from_user.id)
+        "Управление рефералкой:",
+        reply_markup=share_keyboard()
     )
 
 
@@ -241,13 +237,16 @@ async def menu_myrefs(callback: CallbackQuery) -> None:
     await callback.message.answer(
         "📊 <b>Твоя реферальная программа</b>\n\n"
         f"<b>Приглашено:</b> {total}\n\n"
-        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
-        "Отправь её друзьям 👇"
+        "📎 <b>Твоя ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        "Скопируй её и отправь друзьям 👇"
     )
+
     await callback.message.answer(
-        "🔥 Поделиться ботом:",
-        reply_markup=share_keyboard(callback.from_user.id)
+        "Управление рефералкой:",
+        reply_markup=share_keyboard()
     )
+
     await callback.answer()
 
 
@@ -311,7 +310,12 @@ async def fetch_tracks(query: str) -> list[dict]:
             response.raise_for_status()
             data = await response.json()
 
-    return data.get("results", [])
+    # backend может вернуть либо список, либо {"results": [...]}
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("results", [])
+    return []
 
 
 async def download_preview(preview_url: str) -> bytes:
@@ -375,9 +379,9 @@ async def handle_text(message: Message) -> None:
         )
 
         await message.answer(
-            "🔥 Хочешь поделиться ботом с друзьями?\n"
-            "Отправь им свою ссылку 👇",
-            reply_markup=share_keyboard(message.from_user.id)
+            "🔥 Хочешь пригласить друзей?\n\n"
+            "Нажми «Мои приглашения» — бот покажет твою личную ссылку 👇",
+            reply_markup=share_keyboard()
         )
 
         await bot.send_message(
@@ -393,39 +397,55 @@ async def handle_text(message: Message) -> None:
 
     await message.answer("🔎 Ищу...")
 
-    results = await fetch_tracks(text)
+    try:
+        results = await fetch_tracks(text)
 
-    if not results:
-        await message.answer("Ничего не найдено.", reply_markup=main_menu())
-        return
+        if not results:
+            await message.answer("Ничего не найдено.", reply_markup=main_menu())
+            return
 
-    for item in results[:3]:
-        artist = item["artist"]["name"]
-        title = item["title"]
-        preview = item["preview"]
+        for item in results[:3]:
+            # поддержка двух форматов:
+            # 1) {"title": "...", "artist": {"name": "..."}, "preview": "..."}
+            # 2) {"title": "...", "artist": "...", "preview_url": "..."}
+            title = item.get("title", "Unknown title")
 
-        audio_bytes = await download_preview(preview)
+            artist_field = item.get("artist")
+            if isinstance(artist_field, dict):
+                artist = artist_field.get("name", "Unknown artist")
+            else:
+                artist = artist_field or "Unknown artist"
 
-        await message.answer_audio(
-            audio=BufferedInputFile(
-                audio_bytes,
-                filename=f"{safe_filename(title)} - {safe_filename(artist)}.mp3"
-            ),
-            caption=f"{artist} — {title}",
-            title=title,
-            performer=artist
+            preview = item.get("preview") or item.get("preview_url")
+            if not preview:
+                continue
+
+            audio_bytes = await download_preview(preview)
+
+            await message.answer_audio(
+                audio=BufferedInputFile(
+                    audio_bytes,
+                    filename=f"{safe_filename(artist)} - {safe_filename(title)}.mp3"
+                ),
+                caption=f"{artist} — {title}",
+                title=title,
+                performer=artist
+            )
+
+        await message.answer(
+            "Можешь выбрать следующее действие:",
+            reply_markup=main_menu()
         )
 
-    await message.answer(
-        "Можешь выбрать следующее действие:",
-        reply_markup=main_menu()
-    )
+        await message.answer(
+            "🔥 Понравился бот?\n\n"
+            "Нажми «Мои приглашения» и отправь друзьям свою ссылку 👇",
+            reply_markup=share_keyboard()
+        )
 
-    await message.answer(
-        "🔥 Понравился бот? Поделись с друзьями 👇",
-        reply_markup=share_keyboard(message.from_user.id)
-    )
-
+    except Exception as e:
+        print("SEARCH ERROR:", e)
+        await message.answer("❌ Ошибка поиска. Попробуй позже.")
 
 async def main():
     global BOT_USERNAME
