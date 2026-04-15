@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import asyncio
+import requests
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F
@@ -13,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+BACKEND_URL = os.getenv("BACKEND_URL")  # ОБЯЗАТЕЛЬНО: https://...railway.app
 
 ADMIN_ID = 1485749631
 TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_"
@@ -119,7 +121,7 @@ async def start(message: Message):
         save_ref(user_id, inviter)
 
     await message.answer(
-        "🎧 <b>Хочешь персональную песню под заказ?</b>\n\n"
+        "🎧 <b>Я создаю персональные песни под заказ</b>\n\n"
         "✨ Это не шаблон — это трек про вашу историю\n\n"
         "💝 Идеально для:\n"
         "— любимого человека ❤️\n"
@@ -213,9 +215,37 @@ async def text_handler(message: Message):
         )
         return
 
-    # --- поиск ---
+    # --- ПОИСК + ПЛЕЕР (ВАЖНО) ---
     if mode == "music":
-        await message.answer("🔎 Ищу... (пока заглушка)")
+        query = text.strip()
+
+        await message.answer("🔎 Ищу...")
+
+        try:
+            response = requests.get(
+                f"{BACKEND_URL}/search",
+                params={"q": query},
+                timeout=10
+            )
+
+            data = response.json()
+
+            if not data:
+                await message.answer("😔 Ничего не найдено")
+                return
+
+            # отправляем 3 превью как плеер
+            for track in data[:3]:
+                await message.answer_audio(
+                    audio=track["preview_url"],
+                    title=track["title"],
+                    performer=track["artist"]
+                )
+
+        except Exception as e:
+            print("SEARCH ERROR:", e)
+            await message.answer("❌ Ошибка поиска. Попробуй позже.")
+
         return
 
 
