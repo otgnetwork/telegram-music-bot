@@ -151,14 +151,8 @@ def admin_reply_keyboard(user_id: int):
     return builder.as_markup()
 
 
-def share_keyboard(user_id: int):
-    if BOT_USERNAME:
-        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
-    else:
-        ref_link = "https://t.me"
-
+def share_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔗 Открыть мою ссылку", url=ref_link)
     builder.button(text="📊 Мои приглашения", callback_data="menu:myrefs")
     builder.adjust(1)
     return builder.as_markup()
@@ -236,8 +230,8 @@ async def my_refs(message: Message) -> None:
     )
 
     await message.answer(
-        "Управление ссылкой:",
-        reply_markup=share_keyboard(message.from_user.id)
+        "Управление рефералкой:",
+        reply_markup=share_keyboard()
     )
 
 
@@ -261,8 +255,8 @@ async def menu_myrefs(callback: CallbackQuery) -> None:
     )
 
     await callback.message.answer(
-        "Управление ссылкой:",
-        reply_markup=share_keyboard(callback.from_user.id)
+        "Управление рефералкой:",
+        reply_markup=share_keyboard()
     )
 
     await callback.answer()
@@ -394,7 +388,7 @@ async def handle_text(message: Message) -> None:
         await message.answer(
             "🔥 Хочешь пригласить друзей?\n\n"
             "Нажми «Мои приглашения» — бот покажет твою личную ссылку 👇",
-            reply_markup=share_keyboard(message.from_user.id)
+            reply_markup=share_keyboard()
         )
 
         await bot.send_message(
@@ -441,7 +435,7 @@ async def handle_text(message: Message) -> None:
     await message.answer(
         "🔥 Понравился бот?\n\n"
         "Нажми «Мои приглашения» и отправь друзьям свою ссылку 👇",
-        reply_markup=share_keyboard(message.from_user.id)
+        reply_markup=share_keyboard()
     )
 
 
