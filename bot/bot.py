@@ -71,7 +71,10 @@ def init_db() -> None:
 def register_user_if_needed(user_id: int) -> None:
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (user_id,))
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)",
+        (user_id,)
+    )
     conn.commit()
     conn.close()
 
@@ -83,8 +86,14 @@ def save_referral(invited_user_id: int, inviter_id: int) -> bool:
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (invited_user_id,))
-    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (inviter_id,))
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)",
+        (invited_user_id,)
+    )
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)",
+        (inviter_id,)
+    )
 
     cur.execute("SELECT invited_by FROM users WHERE user_id = ?", (invited_user_id,))
     row = cur.fetchone()
@@ -115,7 +124,10 @@ def save_referral(invited_user_id: int, inviter_id: int) -> bool:
 def get_referrals_count(inviter_id: int) -> int:
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS total FROM referrals WHERE inviter_id = ?", (inviter_id,))
+    cur.execute(
+        "SELECT COUNT(*) AS total FROM referrals WHERE inviter_id = ?",
+        (inviter_id,)
+    )
     row = cur.fetchone()
     conn.close()
     return int(row["total"]) if row else 0
@@ -146,7 +158,7 @@ def share_keyboard(user_id: int):
         ref_link = "https://t.me"
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔥 Поделиться ботом", url=ref_link)
+    builder.button(text="🔗 Открыть мою ссылку", url=ref_link)
     builder.button(text="📊 Мои приглашения", callback_data="menu:myrefs")
     builder.adjust(1)
     return builder.as_markup()
@@ -218,11 +230,13 @@ async def my_refs(message: Message) -> None:
     await message.answer(
         "📊 <b>Твоя реферальная программа</b>\n\n"
         f"<b>Приглашено:</b> {total}\n\n"
-        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
-        "Отправь её друзьям 👇"
+        "📎 <b>Твоя ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        "Скопируй её и отправь друзьям 👇"
     )
+
     await message.answer(
-        "🔥 Поделиться ботом:",
+        "Управление ссылкой:",
         reply_markup=share_keyboard(message.from_user.id)
     )
 
@@ -241,13 +255,16 @@ async def menu_myrefs(callback: CallbackQuery) -> None:
     await callback.message.answer(
         "📊 <b>Твоя реферальная программа</b>\n\n"
         f"<b>Приглашено:</b> {total}\n\n"
-        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
-        "Отправь её друзьям 👇"
+        "📎 <b>Твоя ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        "Скопируй её и отправь друзьям 👇"
     )
+
     await callback.message.answer(
-        "🔥 Поделиться ботом:",
+        "Управление ссылкой:",
         reply_markup=share_keyboard(callback.from_user.id)
     )
+
     await callback.answer()
 
 
@@ -375,8 +392,8 @@ async def handle_text(message: Message) -> None:
         )
 
         await message.answer(
-            "🔥 Хочешь поделиться ботом с друзьями?\n"
-            "Отправь им свою ссылку 👇",
+            "🔥 Хочешь пригласить друзей?\n\n"
+            "Нажми «Мои приглашения» — бот покажет твою личную ссылку 👇",
             reply_markup=share_keyboard(message.from_user.id)
         )
 
@@ -422,7 +439,8 @@ async def handle_text(message: Message) -> None:
     )
 
     await message.answer(
-        "🔥 Понравился бот? Поделись с друзьями 👇",
+        "🔥 Понравился бот?\n\n"
+        "Нажми «Мои приглашения» и отправь друзьям свою ссылку 👇",
         reply_markup=share_keyboard(message.from_user.id)
     )
 
