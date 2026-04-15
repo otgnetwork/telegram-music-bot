@@ -1,6 +1,7 @@
 import os
 import re
 import ssl
+import sqlite3
 import asyncio
 import aiohttp
 import certifi
@@ -8,7 +9,7 @@ import certifi
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -23,6 +24,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8001")
 ADMIN_ID = 1485749631
 TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_"
+DB_PATH = "referrals.db"
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set in .env")
@@ -35,6 +37,88 @@ dp = Dispatcher()
 
 user_mode: dict[int, str] = {}
 admin_reply_target: dict[int, int] = {}
+BOT_USERNAME: str | None = None
+
+
+def get_db_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            invited_by INTEGER
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            inviter_id INTEGER NOT NULL,
+            invited_user_id INTEGER NOT NULL UNIQUE
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def register_user_if_needed(user_id: int) -> None:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def save_referral(invited_user_id: int, inviter_id: int) -> bool:
+    if invited_user_id == inviter_id:
+        return False
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (invited_user_id,))
+    cur.execute("INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, NULL)", (inviter_id,))
+
+    cur.execute("SELECT invited_by FROM users WHERE user_id = ?", (invited_user_id,))
+    row = cur.fetchone()
+
+    if row and row["invited_by"] is not None:
+        conn.close()
+        return False
+
+    cur.execute(
+        "UPDATE users SET invited_by = ? WHERE user_id = ? AND invited_by IS NULL",
+        (inviter_id, invited_user_id),
+    )
+
+    if cur.rowcount == 0:
+        conn.close()
+        return False
+
+    cur.execute(
+        "INSERT OR IGNORE INTO referrals (inviter_id, invited_user_id) VALUES (?, ?)",
+        (inviter_id, invited_user_id),
+    )
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_referrals_count(inviter_id: int) -> int:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS total FROM referrals WHERE inviter_id = ?", (inviter_id,))
+    row = cur.fetchone()
+    conn.close()
+    return int(row["total"]) if row else 0
 
 
 def main_menu():
@@ -55,6 +139,19 @@ def admin_reply_keyboard(user_id: int):
     return builder.as_markup()
 
 
+def share_keyboard(user_id: int):
+    if BOT_USERNAME:
+        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
+    else:
+        ref_link = "https://t.me"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔥 Поделиться ботом", url=ref_link)
+    builder.button(text="📊 Мои приглашения", callback_data="menu:myrefs")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def safe_filename(value: str) -> str:
     value = re.sub(r'[\\/*?:"<>|]', "", value)
     value = re.sub(r"\s+", " ", value).strip()
@@ -62,19 +159,96 @@ def safe_filename(value: str) -> str:
 
 
 @dp.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, command: CommandObject | None = None):
     user_mode[message.from_user.id] = "music"
+    register_user_if_needed(message.from_user.id)
 
-    await message.answer(
+    referral_saved = False
+    inviter_id = None
+
+    if command and command.args and command.args.startswith("ref_"):
+        raw_id = command.args.replace("ref_", "", 1)
+        if raw_id.isdigit():
+            inviter_id = int(raw_id)
+            referral_saved = save_referral(
+                invited_user_id=message.from_user.id,
+                inviter_id=inviter_id,
+            )
+
+    text = (
         "🎧 <b>Привет! Я делаю персональные песни под заказ</b>\n\n"
         "🔥 Подойдет для:\n"
         "— любимой ❤️\n"
         "— годовщины 💍\n"
         "— подарка 🎁\n\n"
-        "🎬 Я также веду живые эфиры в TikTok — можешь залететь прямо сейчас 👇",
+        "🎬 Я также веду живые эфиры в TikTok — можешь залететь прямо сейчас 👇"
+    )
+
+    if referral_saved:
+        text += "\n\n🎁 <b>Ты пришёл по приглашению друга</b>"
+
+    await message.answer(
+        text,
         parse_mode="HTML",
         reply_markup=main_menu()
     )
+
+    if referral_saved and inviter_id:
+        try:
+            await bot.send_message(
+                inviter_id,
+                "🎉 <b>У тебя новый приглашённый пользователь!</b>\n\n"
+                f"Всего приглашений: <b>{get_referrals_count(inviter_id)}</b>"
+            )
+        except Exception:
+            pass
+
+
+@dp.message(F.text == "/myrefs")
+async def my_refs(message: Message) -> None:
+    register_user_if_needed(message.from_user.id)
+
+    if BOT_USERNAME:
+        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
+    else:
+        ref_link = "Бот ещё инициализируется, попробуй чуть позже."
+
+    total = get_referrals_count(message.from_user.id)
+
+    await message.answer(
+        "📊 <b>Твоя реферальная программа</b>\n\n"
+        f"<b>Приглашено:</b> {total}\n\n"
+        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
+        "Отправь её друзьям 👇"
+    )
+    await message.answer(
+        "🔥 Поделиться ботом:",
+        reply_markup=share_keyboard(message.from_user.id)
+    )
+
+
+@dp.callback_query(F.data == "menu:myrefs")
+async def menu_myrefs(callback: CallbackQuery) -> None:
+    register_user_if_needed(callback.from_user.id)
+
+    if BOT_USERNAME:
+        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
+    else:
+        ref_link = "Бот ещё инициализируется, попробуй чуть позже."
+
+    total = get_referrals_count(callback.from_user.id)
+
+    await callback.message.answer(
+        "📊 <b>Твоя реферальная программа</b>\n\n"
+        f"<b>Приглашено:</b> {total}\n\n"
+        f"<b>Твоя ссылка:</b>\n<code>{ref_link}</code>\n\n"
+        "Отправь её друзьям 👇"
+    )
+    await callback.message.answer(
+        "🔥 Поделиться ботом:",
+        reply_markup=share_keyboard(callback.from_user.id)
+    )
+    await callback.answer()
 
 
 @dp.callback_query(F.data == "menu:music")
@@ -165,7 +339,8 @@ async def handle_text(message: Message) -> None:
         await message.answer("Отправь текстовый запрос.")
         return
 
-    # Ответ клиенту от админа
+    register_user_if_needed(message.from_user.id)
+
     if message.from_user.id == ADMIN_ID and message.from_user.id in admin_reply_target:
         target_user_id = admin_reply_target[message.from_user.id]
 
@@ -180,7 +355,6 @@ async def handle_text(message: Message) -> None:
 
     mode = user_mode.get(message.from_user.id, "music")
 
-    # Заявка на песню
     if mode == "song":
         username = f"@{message.from_user.username}" if message.from_user.username else "без username"
         full_name = message.from_user.full_name or "Без имени"
@@ -194,10 +368,16 @@ async def handle_text(message: Message) -> None:
         )
 
         await message.answer(
-    "🎯 Пока я обрабатываю заявку, ты можешь:\n\n"
-    "— найти музыку 🎧\n"
-    "— или посмотреть эфир в TikTok 🎥",
-    reply_markup=main_menu()
+            "🎯 Пока я обрабатываю заявку, ты можешь:\n\n"
+            "— найти музыку 🎧\n"
+            "— или посмотреть эфир в TikTok 🎥",
+            reply_markup=main_menu()
+        )
+
+        await message.answer(
+            "🔥 Хочешь поделиться ботом с друзьями?\n"
+            "Отправь им свою ссылку 👇",
+            reply_markup=share_keyboard(message.from_user.id)
         )
 
         await bot.send_message(
@@ -211,7 +391,6 @@ async def handle_text(message: Message) -> None:
         )
         return
 
-    # Поиск музыки
     await message.answer("🔎 Ищу...")
 
     results = await fetch_tracks(text)
@@ -242,8 +421,20 @@ async def handle_text(message: Message) -> None:
         reply_markup=main_menu()
     )
 
+    await message.answer(
+        "🔥 Понравился бот? Поделись с друзьями 👇",
+        reply_markup=share_keyboard(message.from_user.id)
+    )
+
 
 async def main():
+    global BOT_USERNAME
+
+    init_db()
+
+    me = await bot.get_me()
+    BOT_USERNAME = me.username
+
     await dp.start_polling(bot)
 
 
