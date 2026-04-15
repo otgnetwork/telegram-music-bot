@@ -13,7 +13,6 @@ from aiogram.types import (
     Message,
     CallbackQuery,
     BufferedInputFile,
-    ReplyKeyboardRemove,
 )
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -23,7 +22,6 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8001")
 ADMIN_ID = 1485749631
-
 TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_"
 
 if not BOT_TOKEN:
@@ -65,6 +63,8 @@ def safe_filename(value: str) -> str:
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
+    user_mode[message.from_user.id] = "music"
+
     await message.answer(
         "🎧 <b>Привет! Я делаю персональные песни под заказ</b>\n\n"
         "🔥 Подойдет для:\n"
@@ -80,6 +80,7 @@ async def cmd_start(message: Message):
 @dp.callback_query(F.data == "menu:music")
 async def menu_music(callback: CallbackQuery) -> None:
     user_mode[callback.from_user.id] = "music"
+
     await callback.message.edit_text(
         "<b>🎵 Поиск музыки</b>\n\n"
         "Отправь название трека или исполнителя.\n"
@@ -103,8 +104,7 @@ async def menu_song(callback: CallbackQuery) -> None:
         "— настроение\n"
         "— важные детали\n\n"
         "💡 Чем подробнее — тем сильнее получится результат",
-        parse_mode="HTML",
-        reply_markup=main_menu()
+        parse_mode="HTML"
     )
 
     await callback.answer()
@@ -160,7 +160,11 @@ async def cancel_reply(message: Message) -> None:
 async def handle_text(message: Message) -> None:
     text = (message.text or "").strip()
 
-    # 🔥 Ответ клиенту
+    if not text:
+        await message.answer("Отправь текстовый запрос.")
+        return
+
+    # Ответ клиенту от админа
     if message.from_user.id == ADMIN_ID and message.from_user.id in admin_reply_target:
         target_user_id = admin_reply_target[message.from_user.id]
 
@@ -169,27 +173,49 @@ async def handle_text(message: Message) -> None:
             "📩 <b>Ответ от менеджера:</b>\n\n" + text
         )
 
-        await message.answer("✅ Отправлено")
+        await message.answer("✅ Сообщение отправлено клиенту.")
         del admin_reply_target[message.from_user.id]
         return
 
     mode = user_mode.get(message.from_user.id, "music")
 
-    # 🎤 Заявка
+    # Заявка на песню
     if mode == "song":
-        await message.answer("✅ Заявка принята", reply_markup=main_menu())
+        username = f"@{message.from_user.username}" if message.from_user.username else "без username"
+        full_name = message.from_user.full_name or "Без имени"
+
+        await message.answer(
+            "🎤 <b>Твоя заявка принята!</b>\n\n"
+            "Вот что мы получили:\n"
+            f"<blockquote>{text}</blockquote>\n\n"
+            "Я скоро посмотрю заявку и свяжусь с тобой 👌",
+            parse_mode="HTML"
+        )
+
+        await message.answer(
+            "Можешь выбрать следующее действие:",
+            reply_markup=main_menu()
+        )
 
         await bot.send_message(
             ADMIN_ID,
-            f"<b>Новая заявка</b>\n\n{text}",
+            "<b>🔥 НОВАЯ ЗАЯВКА НА ПЕСНЮ</b>\n\n"
+            f"<b>Имя:</b> {full_name}\n"
+            f"<b>Username:</b> {username}\n"
+            f"<b>User ID:</b> <code>{message.from_user.id}</code>\n\n"
+            f"<b>Текст заявки:</b>\n<blockquote>{text}</blockquote>",
             reply_markup=admin_reply_keyboard(message.from_user.id)
         )
         return
 
-    # 🎵 Музыка
+    # Поиск музыки
     await message.answer("🔎 Ищу...")
 
     results = await fetch_tracks(text)
+
+    if not results:
+        await message.answer("Ничего не найдено.", reply_markup=main_menu())
+        return
 
     for item in results[:3]:
         artist = item["artist"]["name"]
@@ -199,9 +225,19 @@ async def handle_text(message: Message) -> None:
         audio_bytes = await download_preview(preview)
 
         await message.answer_audio(
-            audio=BufferedInputFile(audio_bytes, filename="track.mp3"),
-            caption=f"{artist} — {title}"
+            audio=BufferedInputFile(
+                audio_bytes,
+                filename=f"{safe_filename(title)} - {safe_filename(artist)}.mp3"
+            ),
+            caption=f"{artist} — {title}",
+            title=title,
+            performer=artist
         )
+
+    await message.answer(
+        "Можешь выбрать следующее действие:",
+        reply_markup=main_menu()
+    )
 
 
 async def main():
