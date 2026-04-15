@@ -81,11 +81,6 @@ async def cmd_start(message: Message):
         reply_markup=main_menu()
     )
 
-    await message.answer(
-        "Главное меню:",
-        reply_markup=main_menu()
-    )
-
 
 @dp.callback_query(F.data == "menu:music")
 async def menu_music(callback: CallbackQuery) -> None:
