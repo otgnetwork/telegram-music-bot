@@ -383,16 +383,8 @@ async def handle_text(message: Message) -> None:
         )
 
         await message.answer(
-            "🎯 Пока я обрабатываю заявку, ты можешь:\n\n"
-            "— найти музыку 🎧\n"
-            "— или посмотреть эфир в TikTok 🎥",
+            "Можешь выбрать следующее действие:",
             reply_markup=main_menu()
-        )
-
-        await message.answer(
-            "🔥 Хочешь пригласить друзей?\n\n"
-            "Нажми «Мои приглашения» — бот покажет твою личную ссылку 👇",
-            reply_markup=share_keyboard()
         )
 
         await bot.send_message(
