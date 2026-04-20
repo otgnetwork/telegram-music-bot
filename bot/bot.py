@@ -23,7 +23,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8001")
 ADMIN_ID = 1485749631
-TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_"
+TIKTOK_URL = "https://www.tiktok.com/@otg_network_"
 DB_PATH = "referrals.db"
 
 if not BOT_TOKEN:
