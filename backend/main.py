@@ -4,10 +4,9 @@ from deezer import search_tracks
 
 app = FastAPI()
 
-# 🔥 ВАЖНО: разрешаем запросы с фронта
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # можно потом ограничить
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
