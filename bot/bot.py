@@ -6,20 +6,19 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-MINI_APP_URL = "https://otg-mini-app-clean-production.up.railway.app/index.html"
+MINI_APP_URL = "https://otg-mini-app-clean-production.up.railway.app"
 TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_/"
 
 START_TEXT = (
-    "🚀 <b>OTG Media Network</b>\n\n"
-    "Музыка, клипы и персональные песни — в одном месте.\n\n"
-    f"<b>DEBUG URL:</b>\n{MINI_APP_URL}\n\n"
-    "👇 Открой приложение"
+    "🚀 <b>OTG Media Network TEST</b>\n\n"
+    f"<b>URL:</b> {MINI_APP_URL}\n\n"
+    "Нажми кнопку ниже."
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 Открыть OTG Media", url=MINI_APP_URL)],
-        [InlineKeyboardButton("🎬 Музыкальный эфир OTG в TikTok", url=TIKTOK_URL)],
+        [InlineKeyboardButton("🚀 TEST OPEN APP", url=MINI_APP_URL)],
+        [InlineKeyboardButton("🎬 TikTok", url=TIKTOK_URL)],
     ])
     await update.message.reply_html(START_TEXT, reply_markup=keyboard)
 
