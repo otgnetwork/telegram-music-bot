@@ -20,8 +20,7 @@ TIKTOK_URL = "https://www.tiktok.com/@alexey_pv_/"
 START_TEXT = (
     "🚀 <b>OTG Media Network</b>\n\n"
     "Музыка, клипы и персональные песни — в одном месте.\n\n"
-    "Нажми кнопку <b>🚀 Открыть OTG Media</b> под полем ввода, чтобы открыть приложение.\n"
-    "Для эфира используй кнопку ниже."
+    "👇 Нажми кнопку ниже, чтобы открыть приложение"
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
